@@ -2,12 +2,25 @@ import { getStore } from "@netlify/blobs";
 import { v4 as uuidv4 } from "uuid";
 import QRCode from "qrcode";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
 export default async (req, context) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
+
   // Only allow POST
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
 
@@ -19,7 +32,7 @@ export default async (req, context) => {
   if (providedPassword !== adminPassword) {
     return new Response(JSON.stringify({ error: "Unauthorized - wrong password" }), {
       status: 401,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
 
@@ -30,7 +43,7 @@ export default async (req, context) => {
     if (!file || !(file instanceof File)) {
       return new Response(JSON.stringify({ error: "No file uploaded" }), {
         status: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
 
@@ -42,7 +55,7 @@ export default async (req, context) => {
     if (!allowedTypes.includes(file.type)) {
       return new Response(JSON.stringify({ error: "Unsupported file type. Use image or video." }), {
         status: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
 
@@ -50,7 +63,7 @@ export default async (req, context) => {
     if (file.size > 50 * 1024 * 1024) {
       return new Response(JSON.stringify({ error: "File too large (max 50MB)" }), {
         status: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
 
@@ -90,14 +103,14 @@ export default async (req, context) => {
       }),
       {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       }
     );
   } catch (err) {
     console.error("Upload error:", err);
     return new Response(JSON.stringify({ error: "Upload failed: " + err.message }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
 };

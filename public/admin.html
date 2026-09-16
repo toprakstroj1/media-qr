@@ -188,10 +188,19 @@
           body: formData
         });
 
-        const data = await res.json();
+        const text = await res.text();
+        let data = {};
+
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch (parseErr) {
+            throw new Error('Sunucu geçersiz JSON döndürdü: ' + text.slice(0, 200));
+          }
+        }
 
         if (!res.ok) {
-          throw new Error(data.error || 'Yükleme başarısız');
+          throw new Error(data.error || `İstek başarısız oldu (${res.status})`);
         }
 
         // Show result
@@ -202,7 +211,7 @@
         window.currentQR = data.qr;
         window.currentUrl = data.url;
       } catch (err) {
-        showError(err.message);
+        showError(err.message || 'Bilinmeyen hata');
       } finally {
         spinner.classList.remove('show');
         submitBtn.disabled = false;

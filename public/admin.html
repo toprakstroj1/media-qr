@@ -159,7 +159,7 @@
     const errorBox = document.getElementById('errorBox');
     const spinner = document.getElementById('spinner');
     const submitBtn = document.getElementById('submitBtn');
-    const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+    const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -178,7 +178,7 @@
       }
 
       if (file.size > MAX_UPLOAD_BYTES) {
-        showError('Dosya çok büyük. Netlify üzerinde maksimum 8MB yükleme yapılabilir. Daha küçük bir dosya seçin.');
+        showError('Dosya çok büyük. Maksimum 100MB yükleme yapılabilir. Daha küçük bir dosya seçin.');
         return;
       }
 

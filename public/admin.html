@@ -163,6 +163,7 @@
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      console.log('submit triggered', { password: document.getElementById('password').value, file: document.getElementById('file').files[0]?.name });
       errorBox.style.display = 'none';
       result.classList.remove('show');
       spinner.classList.add('show');
@@ -173,17 +174,21 @@
       const file = fileInput.files[0];
 
       if (!file) {
+        console.log('no file selected');
         showError('Dosya seçin');
         return;
       }
 
       if (file.size > MAX_UPLOAD_BYTES) {
+        console.log('file too large', file.size);
         showError('Dosya çok büyük. Maksimum 100MB yükleme yapılabilir. Daha küçük bir dosya seçin.');
         return;
       }
 
       const formData = new FormData();
       formData.append('file', file);
+
+      console.log('sending fetch to /api/upload', { passwordLength: password.length, fileName: file.name, fileSize: file.size });
 
       try {
         const res = await fetch('/api/upload', {
@@ -194,6 +199,7 @@
           body: formData
         });
 
+        console.log('fetch response received', res.status, res.ok);
         const text = await res.text();
         let data = {};
 

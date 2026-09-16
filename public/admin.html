@@ -159,7 +159,6 @@
     const errorBox = document.getElementById('errorBox');
     const spinner = document.getElementById('spinner');
     const submitBtn = document.getElementById('submitBtn');
-    const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -179,49 +178,72 @@
         return;
       }
 
-      if (file.size > MAX_UPLOAD_BYTES) {
+      if (file.size > 100 * 1024 * 1024) {
         console.log('file too large', file.size);
         showError('Dosya çok büyük. Maksimum 100MB yükleme yapılabilir. Daha küçük bir dosya seçin.');
         return;
       }
 
-      const formData = new FormData();
-      formData.append('file', file);
-
-      console.log('sending fetch to /api/upload', { passwordLength: password.length, fileName: file.name, fileSize: file.size });
-
       try {
-        const res = await fetch('/api/upload', {
+        console.log('requesting Cloudinary config');
+        const configRes = await fetch('/api/upload', {
           method: 'POST',
           headers: {
             'Authorization': 'Bearer ' + password
-          },
-          body: formData
+          }
         });
 
-        console.log('fetch response received', res.status, res.ok);
-        const text = await res.text();
-        let data = {};
+        const configText = await configRes.text();
+        let configData = {};
 
-        if (text) {
+        if (configText) {
           try {
-            data = JSON.parse(text);
+            configData = JSON.parse(configText);
           } catch (parseErr) {
-            throw new Error('Sunucu geçersiz JSON döndürdü: ' + text.slice(0, 200));
+            throw new Error('Sunucu cevabı JSON değil: ' + configText.slice(0, 200));
           }
         }
 
-        if (!res.ok) {
-          throw new Error(data.error || `İstek başarısız oldu (${res.status})`);
+        if (!configRes.ok) {
+          throw new Error(configData.error || `İstek başarısız oldu (${configRes.status})`);
         }
 
-        // Show result
-        document.getElementById('qrImage').src = data.qr;
-        document.getElementById('mediaLink').textContent = data.url;
-        document.getElementById('openLink').href = data.url;
+        const cloudFormData = new FormData();
+        cloudFormData.append('file', file);
+        cloudFormData.append('api_key', configData.apiKey);
+        cloudFormData.append('timestamp', String(configData.timestamp));
+        cloudFormData.append('signature', configData.signature);
+        cloudFormData.append('folder', configData.folder);
+
+        console.log('uploading directly to Cloudinary', configData.uploadUrl);
+        const uploadRes = await fetch(configData.uploadUrl, {
+          method: 'POST',
+          body: cloudFormData
+        });
+
+        const uploadText = await uploadRes.text();
+        let uploadData = {};
+        if (uploadText) {
+          try {
+            uploadData = JSON.parse(uploadText);
+          } catch (parseErr) {
+            throw new Error('Cloudinary cevabı JSON değil: ' + uploadText.slice(0, 200));
+          }
+        }
+
+        if (!uploadRes.ok) {
+          throw new Error(uploadData.error?.message || 'Cloudinary yükleme başarısız oldu');
+        }
+
+        const mediaUrl = uploadData.secure_url || uploadData.url;
+        const qrImageUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(mediaUrl);
+
+        document.getElementById('qrImage').src = qrImageUrl;
+        document.getElementById('mediaLink').textContent = mediaUrl;
+        document.getElementById('openLink').href = mediaUrl;
         result.classList.add('show');
-        window.currentQR = data.qr;
-        window.currentUrl = data.url;
+        window.currentQR = qrImageUrl;
+        window.currentUrl = mediaUrl;
       } catch (err) {
         showError(err.message || 'Bilinmeyen hata');
       } finally {

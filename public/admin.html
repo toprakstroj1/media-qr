@@ -116,6 +116,33 @@
       margin: 0 auto 12px;
     }
     .spinner.show { display: block; }
+    .progress-wrap {
+      display: none;
+      margin: 16px 0 18px;
+    }
+    .progress-wrap.show { display: block; }
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      opacity: 0.85;
+      margin-bottom: 8px;
+    }
+    .progress-bar-shell {
+      width: 100%;
+      height: 12px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #a78bfa, #60a5fa);
+      border-radius: inherit;
+      transition: width 0.2s ease;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
@@ -134,6 +161,16 @@
 
         <label for="file">Medya Dosyası (Resim / Video)</label>
         <input type="file" id="file" accept="image/*,video/*" required>
+
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-label">
+            <span>Yükleniyor</span>
+            <span id="progressText">0%</span>
+          </div>
+          <div class="progress-bar-shell">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+        </div>
 
         <div class="spinner" id="spinner"></div>
         <button type="submit" class="btn" id="submitBtn">Yükle &amp; QR Oluştur</button>
@@ -159,13 +196,34 @@
     const errorBox = document.getElementById('errorBox');
     const spinner = document.getElementById('spinner');
     const submitBtn = document.getElementById('submitBtn');
+    const progressWrap = document.getElementById('progressWrap');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+    function setProgress(percent) {
+      progressBar.style.width = percent + '%';
+      progressText.textContent = Math.round(percent) + '%';
+    }
+
+    function showLoadingState() {
+      spinner.classList.add('show');
+      progressWrap.classList.add('show');
+      setProgress(0);
+    }
+
+    function hideLoadingState() {
+      spinner.classList.remove('show');
+      progressWrap.classList.remove('show');
+      progressBar.style.width = '0%';
+      progressText.textContent = '0%';
+    }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      console.log('submit triggered', { password: document.getElementById('password').value, file: document.getElementById('file').files[0]?.name });
       errorBox.style.display = 'none';
       result.classList.remove('show');
-      spinner.classList.add('show');
+      showLoadingState();
       submitBtn.disabled = true;
 
       const password = document.getElementById('password').value;
@@ -173,19 +231,16 @@
       const file = fileInput.files[0];
 
       if (!file) {
-        console.log('no file selected');
         showError('Dosya seçin');
         return;
       }
 
-      if (file.size > 100 * 1024 * 1024) {
-        console.log('file too large', file.size);
+      if (file.size > MAX_UPLOAD_BYTES) {
         showError('Dosya çok büyük. Maksimum 100MB yükleme yapılabilir. Daha küçük bir dosya seçin.');
         return;
       }
 
       try {
-        console.log('requesting Cloudinary config');
         const configRes = await fetch('/api/upload', {
           method: 'POST',
           headers: {
@@ -215,39 +270,51 @@
         cloudFormData.append('signature', configData.signature);
         cloudFormData.append('folder', configData.folder);
 
-        console.log('uploading directly to Cloudinary', configData.uploadUrl);
-        const uploadRes = await fetch(configData.uploadUrl, {
-          method: 'POST',
-          body: cloudFormData
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', configData.uploadUrl, true);
+
+          xhr.upload.onprogress = (event) => {
+            if (!event.lengthComputable) return;
+            const percent = (event.loaded / event.total) * 100;
+            setProgress(percent);
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const uploadData = JSON.parse(xhr.responseText);
+                const mediaUrl = uploadData.secure_url || uploadData.url;
+                const qrImageUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(mediaUrl);
+
+                document.getElementById('qrImage').src = qrImageUrl;
+                document.getElementById('mediaLink').textContent = mediaUrl;
+                document.getElementById('openLink').href = mediaUrl;
+                result.classList.add('show');
+                window.currentQR = qrImageUrl;
+                window.currentUrl = mediaUrl;
+                setProgress(100);
+                resolve();
+              } catch (err) {
+                reject(new Error('Cloudinary cevabı işlenemedi.'));
+              }
+            } else {
+              try {
+                const data = JSON.parse(xhr.responseText);
+                reject(new Error(data.error?.message || 'Cloudinary yükleme başarısız oldu'));
+              } catch {
+                reject(new Error('Cloudinary yükleme başarısız oldu')); 
+              }
+            }
+          };
+
+          xhr.onerror = () => reject(new Error('Ağ hatası: Cloudinary yükleme başarısız oldu.'));
+          xhr.send(cloudFormData);
         });
-
-        const uploadText = await uploadRes.text();
-        let uploadData = {};
-        if (uploadText) {
-          try {
-            uploadData = JSON.parse(uploadText);
-          } catch (parseErr) {
-            throw new Error('Cloudinary cevabı JSON değil: ' + uploadText.slice(0, 200));
-          }
-        }
-
-        if (!uploadRes.ok) {
-          throw new Error(uploadData.error?.message || 'Cloudinary yükleme başarısız oldu');
-        }
-
-        const mediaUrl = uploadData.secure_url || uploadData.url;
-        const qrImageUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(mediaUrl);
-
-        document.getElementById('qrImage').src = qrImageUrl;
-        document.getElementById('mediaLink').textContent = mediaUrl;
-        document.getElementById('openLink').href = mediaUrl;
-        result.classList.add('show');
-        window.currentQR = qrImageUrl;
-        window.currentUrl = mediaUrl;
       } catch (err) {
         showError(err.message || 'Bilinmeyen hata');
       } finally {
-        spinner.classList.remove('show');
+        hideLoadingState();
         submitBtn.disabled = false;
       }
     });
@@ -255,7 +322,7 @@
     function showError(msg) {
       errorBox.textContent = msg;
       errorBox.style.display = 'block';
-      spinner.classList.remove('show');
+      hideLoadingState();
       submitBtn.disabled = false;
     }
 

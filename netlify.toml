@@ -12,6 +12,11 @@
   to = "/admin.html"
   status = 200
 
+[[redirects]]
+  from = "/history"
+  to = "/history.html"
+  status = 200
+
 [[headers]]
   for = "/api/*"
   [headers.values]

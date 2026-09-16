@@ -1,23 +1,24 @@
 import { getStore } from "@netlify/blobs";
 import { v4 as uuidv4 } from "uuid";
 import QRCode from "qrcode";
+import { v2 as cloudinary } from "cloudinary";
+import { Readable } from "node:stream";
 
-const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // Netlify function request limits are much lower than a 50MB upload
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+const apiKey = process.env.CLOUDINARY_API_KEY;
+const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
 export default async (req, context) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders,
-    });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  // Only allow POST
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
@@ -25,7 +26,6 @@ export default async (req, context) => {
     });
   }
 
-  // Simple password check from env
   const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
   const authHeader = req.headers.get("Authorization") || "";
   const providedPassword = authHeader.replace("Bearer ", "").trim();
@@ -35,6 +35,15 @@ export default async (req, context) => {
       status: 401,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
+  }
+
+  if (!cloudName || !apiKey || !apiSecret) {
+    return new Response(
+      JSON.stringify({
+        error: "Cloudinary environment variables are missing. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET.",
+      }),
+      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+    );
   }
 
   try {
@@ -48,7 +57,6 @@ export default async (req, context) => {
       });
     }
 
-    // Check file type
     const allowedTypes = [
       "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml",
       "video/mp4", "video/webm", "video/ogg", "video/quicktime"
@@ -60,35 +68,49 @@ export default async (req, context) => {
       });
     }
 
-    // Netlify function request limit is smaller than the app's earlier 50MB ceiling.
-    if (file.size > MAX_UPLOAD_BYTES) {
-      return new Response(JSON.stringify({
-        error: `File too large for Netlify upload (max ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB). Use a smaller file or external storage.`
-      }), {
-        status: 413,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
-    }
+    cloudinary.config({
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
+      secure: true,
+    });
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const buffer = Buffer.from(bytes);
+
+    const uploadResult = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          resource_type: file.type.startsWith("video/") ? "video" : "image",
+          folder: "media-qr",
+          public_id: `${Date.now()}-${file.name.replace(/\.[^/.]+$/, "")}`,
+        },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        }
+      );
+
+      Readable.from(buffer).pipe(uploadStream);
+    });
 
     const id = uuidv4();
     const store = getStore({ name: "media-uploads", consistency: "strong" });
+    const mediaUrl = uploadResult.secure_url || uploadResult.url;
 
-    // Store the file
-    await store.set(id, file, {
-      metadata: {
-        contentType: file.type,
-        filename: file.name,
-        size: String(file.size),
-        uploadedAt: new Date().toISOString(),
-      },
-    });
+    await store.set(id, JSON.stringify({
+      id,
+      mediaUrl,
+      contentType: file.type,
+      filename: file.name,
+      uploadedAt: new Date().toISOString(),
+      source: "cloudinary",
+    }));
 
-    // Generate public URL
     const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || "https://your-site.netlify.app";
-    const mediaUrl = `${siteUrl}/m/${id}`;
+    const qrUrl = `${siteUrl}/m/${id}`;
 
-    // Generate QR code as data URL
-    const qrDataUrl = await QRCode.toDataURL(mediaUrl, {
+    const qrDataUrl = await QRCode.toDataURL(qrUrl, {
       width: 300,
       margin: 2,
       color: { dark: "#000000", light: "#ffffff" },
@@ -98,7 +120,7 @@ export default async (req, context) => {
       JSON.stringify({
         success: true,
         id,
-        url: mediaUrl,
+        url: qrUrl,
         qr: qrDataUrl,
         filename: file.name,
         type: file.type,

@@ -25,11 +25,23 @@ QR okutulunca (veya link açılınca) medya **direkt** açılır, ekstra tıklam
 
 Netlify Dashboard → Site settings → Environment variables:
 
-| Key             | Value          | Açıklama                    |
-|-----------------|----------------|-----------------------------|
-| `ADMIN_PASSWORD`| `istedigin-sifre` | Admin paneli şifresi     |
+| Key | Value | Açıklama |
+|---|---|---|
+| `ADMIN_PASSWORD` | `istedigin-sifre` | Admin paneli şifresi |
+| `CLOUDINARY_CLOUD_NAME` | `senin-cloud-name` | Cloudinary bulut adı |
+| `CLOUDINARY_API_KEY` | `...` | Cloudinary API anahtarı |
+| `CLOUDINARY_API_SECRET` | `...` | Cloudinary API secret |
 
-(Varsayılan şifre: `admin123` — mutlaka değiştir!)
+> Netlify Blobs sadece küçük metadata için kalır. Büyük medya dosyaları artık Cloudinary’ye yüklenir.
+
+`ADMIN_PASSWORD` için `.env` dosyası oluşturabilirsin:
+
+```
+ADMIN_PASSWORD=admin123
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+```
 
 ### 3. Deploy
 
@@ -51,12 +63,6 @@ Deploy sonrası site hazır.
 ```bash
 npm install
 npx netlify dev
-```
-
-`ADMIN_PASSWORD` için `.env` dosyası oluşturabilirsin:
-
-```
-ADMIN_PASSWORD=admin123
 ```
 
 ## Dosya Yapısı

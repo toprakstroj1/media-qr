@@ -14,11 +14,9 @@ export default async (req, context) => {
     });
   }
 
-  // Get id from path or query
   const url = new URL(req.url);
   let id = url.searchParams.get("id");
 
-  // Also support /api/media/:id via path
   if (!id) {
     const pathParts = url.pathname.split("/").filter(Boolean);
     id = pathParts[pathParts.length - 1];
@@ -33,23 +31,40 @@ export default async (req, context) => {
 
   try {
     const store = getStore({ name: "media-uploads", consistency: "strong" });
-    const blob = await store.get(id, { type: "stream" });
-    const metadata = await store.getMetadata(id);
+    const recordText = await store.get(id, { type: "text" });
 
-    if (!blob) {
-      return new Response("Media not found", { status: 404, headers: corsHeaders });
+    if (!recordText) {
+      const legacyBlob = await store.get(id, { type: "stream" });
+      if (!legacyBlob) {
+        return new Response("Media not found", { status: 404, headers: corsHeaders });
+      }
+
+      const metadata = await store.getMetadata(id);
+      const contentType = metadata?.metadata?.contentType || "application/octet-stream";
+      return new Response(legacyBlob, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=31536000, immutable",
+          ...corsHeaders,
+        },
+      });
     }
 
-    const contentType = metadata?.metadata?.contentType || "application/octet-stream";
+    const record = JSON.parse(recordText);
+    const mediaUrl = record.mediaUrl;
 
-    return new Response(blob, {
-      status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "public, max-age=31536000, immutable",
-        ...corsHeaders,
-      },
-    });
+    if (mediaUrl) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: mediaUrl,
+          ...corsHeaders,
+        },
+      });
+    }
+
+    return new Response("Media not found", { status: 404, headers: corsHeaders });
   } catch (err) {
     console.error("Media fetch error:", err);
     return new Response("Error fetching media", { status: 500, headers: corsHeaders });

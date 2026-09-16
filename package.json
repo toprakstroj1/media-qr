@@ -1,0 +1,19 @@
+{
+  "name": "media-qr-site",
+  "version": "1.0.0",
+  "description": "Direct media player with QR code - upload image/video, get QR + link",
+  "main": "index.js",
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "echo 'Static site, no build needed'"
+  },
+  "keywords": ["qr", "media", "netlify"],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0",
+    "uuid": "^11.0.3",
+    "qrcode": "^1.5.4"
+  }
+}

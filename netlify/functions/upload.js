@@ -2,6 +2,7 @@ import { getStore } from "@netlify/blobs";
 import { v4 as uuidv4 } from "uuid";
 import QRCode from "qrcode";
 
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // Netlify function request limits are much lower than a 50MB upload
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -59,10 +60,12 @@ export default async (req, context) => {
       });
     }
 
-    // Max size ~50MB for free tier safety
-    if (file.size > 50 * 1024 * 1024) {
-      return new Response(JSON.stringify({ error: "File too large (max 50MB)" }), {
-        status: 400,
+    // Netlify function request limit is smaller than the app's earlier 50MB ceiling.
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return new Response(JSON.stringify({
+        error: `File too large for Netlify upload (max ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB). Use a smaller file or external storage.`
+      }), {
+        status: 413,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
